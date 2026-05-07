@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 var urlStore = make(map[string]string)
@@ -16,11 +18,6 @@ func generateID() string {
 }
 
 func shortenHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "", http.StatusBadRequest)
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(body) == 0 {
 		http.Error(w, "", http.StatusBadRequest)
@@ -36,11 +33,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func redirectHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[1:]
-	if id == "" {
-		http.Error(w, "", http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
 
 	originalURL, ok := urlStore[id]
 	if !ok {
@@ -52,12 +45,21 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func run() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, shortenHandler)
-	mux.HandleFunc(`/{id}`, redirectHandler)
+func newRouter() chi.Router {
+	r := chi.NewRouter()
+	r.Post("/", shortenHandler)
+	r.Get("/{id}", redirectHandler)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusBadRequest)
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusBadRequest)
+	})
+	return r
+}
 
-	return http.ListenAndServe(":8080", mux)
+func run() error {
+	return http.ListenAndServe(":8080", newRouter())
 }
 
 func main() {

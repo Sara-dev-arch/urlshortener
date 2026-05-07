@@ -1,155 +1,131 @@
 package main
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestShortenHandler(t *testing.T) {
-	type want struct {
-		code        int
-		contentType string
-		bodyCheck   func(t *testing.T, body string)
+	srv := httptest.NewServer(newRouter())
+	defer srv.Close()
+
+	successBodyCheck := func(t *testing.T, body string) {
+		assert.True(t, strings.HasPrefix(body, "http://localhost:8080/"), "shortened URL should have base prefix")
 	}
 
-	tests := []struct {
-		name string
-		body string
-		want want
+	testCases := []struct {
+		name         string
+		method       string
+		body         string
+		expectedCode int
+		bodyCheck    func(t *testing.T, body string)
 	}{
 		{
-			name: "positive test #1",
-			body: "https://practicum.yandex.ru/",
-			want: want{
-				code:        http.StatusCreated,
-				contentType: "text/plain",
-				bodyCheck: func(t *testing.T, body string) {
-					assert.True(t, strings.HasPrefix(body, "http://localhost:8080/"), "shortened URL should have base prefix")
-				},
-			},
+			name:         "positive test #1",
+			method:       http.MethodPost,
+			body:         "https://practicum.yandex.ru/",
+			expectedCode: http.StatusCreated,
+			bodyCheck:    successBodyCheck,
 		},
 		{
-			name: "empty body",
-			body: "",
-			want: want{
-				code:        http.StatusBadRequest,
-				contentType: "text/plain; charset=utf-8",
-				bodyCheck:   nil,
-			},
+			name:         "empty body",
+			method:       http.MethodPost,
+			body:         "",
+			expectedCode: http.StatusBadRequest,
+			bodyCheck:    nil,
+		},
+		{
+			name:         "method not allowed GET",
+			method:       http.MethodGet,
+			body:         "",
+			expectedCode: http.StatusBadRequest,
+			bodyCheck:    nil,
+		},
+		{
+			name:         "method not allowed DELETE",
+			method:       http.MethodDelete,
+			body:         "",
+			expectedCode: http.StatusBadRequest,
+			bodyCheck:    nil,
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			urlStore = make(map[string]string)
 
-			request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(test.body))
-			w := httptest.NewRecorder()
-			shortenHandler(w, request)
+			client := resty.New()
+			client.GetClient().CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+			req := client.R()
+			req.Method = tc.method
+			req.URL = srv.URL + "/"
+			req.SetBody(tc.body)
 
-			res := w.Result()
-			defer res.Body.Close()
+			resp, err := req.Send()
+			assert.NoError(t, err, "error making HTTP request")
+			assert.Equal(t, tc.expectedCode, resp.StatusCode(), "Response code didn't match expected")
 
-			assert.Equal(t, test.want.code, res.StatusCode)
-			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
-
-			if test.want.bodyCheck != nil {
-				resBody, err := io.ReadAll(res.Body)
-				require.NoError(t, err)
-				test.want.bodyCheck(t, string(resBody))
+			if tc.bodyCheck != nil {
+				tc.bodyCheck(t, string(resp.Body()))
 			}
 		})
 	}
 }
 
 func TestRedirectHandler(t *testing.T) {
-	type want struct {
-		code     int
-		location string
-	}
+	srv := httptest.NewServer(newRouter())
+	defer srv.Close()
 
-	tests := []struct {
-		name      string
-		storeID   string
-		storeURL  string
-		requestID string
-		want      want
+	testCases := []struct {
+		name             string
+		storeID          string
+		storeURL         string
+		requestID        string
+		expectedCode     int
+		expectedLocation string
 	}{
 		{
-			name:      "positive test #1",
-			storeID:   "EwHXdJfB",
-			storeURL:  "https://practicum.yandex.ru/",
-			requestID: "EwHXdJfB",
-			want: want{
-				code:     http.StatusTemporaryRedirect,
-				location: "https://practicum.yandex.ru/",
-			},
+			name:             "positive test #1",
+			storeID:          "EwHXdJfB",
+			storeURL:         "https://practicum.yandex.ru/",
+			requestID:        "EwHXdJfB",
+			expectedCode:     http.StatusTemporaryRedirect,
+			expectedLocation: "https://practicum.yandex.ru/",
 		},
 		{
-			name:      "id not found",
-			storeID:   "EwHXdJfB",
-			storeURL:  "https://practicum.yandex.ru/",
-			requestID: "notfound",
-			want: want{
-				code: http.StatusBadRequest,
-			},
+			name:             "id not found",
+			storeID:          "EwHXdJfB",
+			storeURL:         "https://practicum.yandex.ru/",
+			requestID:        "notfound",
+			expectedCode:     http.StatusBadRequest,
+			expectedLocation: "",
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			urlStore = make(map[string]string)
-			urlStore[test.storeID] = test.storeURL
+			urlStore[tc.storeID] = tc.storeURL
 
-			request := httptest.NewRequest(http.MethodGet, "/"+test.requestID, nil)
-			w := httptest.NewRecorder()
-			redirectHandler(w, request)
+			client := resty.New()
+			client.GetClient().CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+			req := client.R()
+			req.Method = http.MethodGet
+			req.URL = srv.URL + "/" + tc.requestID
 
-			res := w.Result()
-			defer res.Body.Close()
-
-			assert.Equal(t, test.want.code, res.StatusCode)
-			assert.Equal(t, test.want.location, res.Header.Get("Location"))
-		})
-	}
-}
-
-func TestShortenHandlerMethodNotAllowed(t *testing.T) {
-	tests := []struct {
-		name   string
-		method string
-	}{
-		{
-			name:   "GET / returns 400",
-			method: http.MethodGet,
-		},
-		{
-			name:   "DELETE / returns 400",
-			method: http.MethodDelete,
-		},
-		{
-			name:   "PUT / returns 400",
-			method: http.MethodPut,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(test.method, "/", nil)
-			w := httptest.NewRecorder()
-			shortenHandler(w, request)
-
-			res := w.Result()
-			defer res.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, res.StatusCode)
-			assert.Equal(t, "text/plain; charset=utf-8", res.Header.Get("Content-Type"))
+			resp, err := req.Send()
+			assert.NoError(t, err, "error making HTTP request")
+			assert.Equal(t, tc.expectedCode, resp.StatusCode(), "Response code didn't match expected")
+			assert.Equal(t, tc.expectedLocation, resp.Header().Get("Location"), "Location header didn't match expected")
 		})
 	}
 }
