@@ -11,7 +11,7 @@ import (
 )
 
 func TestShortenHandler(t *testing.T) {
-	srv := httptest.NewServer(newRouter())
+	srv := httptest.NewServer(newRouter("http://localhost:8080"))
 	defer srv.Close()
 
 	successBodyCheck := func(t *testing.T, body string) {
@@ -80,7 +80,7 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestRedirectHandler(t *testing.T) {
-	srv := httptest.NewServer(newRouter())
+	srv := httptest.NewServer(newRouter("http://localhost:8080"))
 	defer srv.Close()
 
 	testCases := []struct {

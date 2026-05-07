@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 
+	"github.com/Sara-dev-arch/urlshortener/internal/config"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,19 +19,48 @@ func generateID() string {
 	return hex.EncodeToString(b)
 }
 
-func shortenHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil || len(body) == 0 {
-		http.Error(w, "", http.StatusBadRequest)
-		return
+func shortenHandler(baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil || len(body) == 0 {
+			http.Error(w, "", http.StatusBadRequest)
+			return
+		}
+
+		id := generateID()
+		urlStore[id] = string(body)
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(baseURL + "/" + id))
 	}
+}
 
-	id := generateID()
-	urlStore[id] = string(body)
+type shortenRequest struct {
+	URL string `json:"url"`
+}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://localhost:8080/" + id))
+type shortenResponse struct {
+	Result string `json:"result"`
+}
+
+func apiShortenHandler(baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req shortenRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+			http.Error(w, "", http.StatusBadRequest)
+			return
+		}
+
+		id := generateID()
+		urlStore[id] = req.URL
+
+		resp := shortenResponse{Result: baseURL + "/" + id}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
+	}
 }
 
 func redirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,9 +76,10 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func newRouter() chi.Router {
+func newRouter(baseURL string) chi.Router {
 	r := chi.NewRouter()
-	r.Post("/", shortenHandler)
+	r.Post("/", shortenHandler(baseURL))
+	r.Post("/api/shorten", apiShortenHandler(baseURL))
 	r.Get("/{id}", redirectHandler)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
@@ -59,7 +91,8 @@ func newRouter() chi.Router {
 }
 
 func run() error {
-	return http.ListenAndServe(":8080", newRouter())
+	cfg := config.Parse()
+	return http.ListenAndServe(cfg.ServerAddress, newRouter(cfg.BaseURL))
 }
 
 func main() {
