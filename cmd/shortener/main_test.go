@@ -6,12 +6,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Sara-dev-arch/urlshortener/internal/handler"
+	"github.com/Sara-dev-arch/urlshortener/internal/repository"
+	"github.com/Sara-dev-arch/urlshortener/internal/service"
 	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 )
 
+func setupTestServer() *httptest.Server {
+	repo := repository.NewInMemoryRepository()
+	svc := service.NewURLService(repo, "http://localhost:8080")
+	h := handler.NewURLHandler(svc)
+	return httptest.NewServer(handler.NewRouter(h))
+}
+
 func TestShortenHandler(t *testing.T) {
-	srv := httptest.NewServer(newRouter("http://localhost:8080"))
+	srv := setupTestServer()
 	defer srv.Close()
 
 	successBodyCheck := func(t *testing.T, body string) {
@@ -57,8 +67,6 @@ func TestShortenHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			urlStore = make(map[string]string)
-
 			client := resty.New()
 			client.GetClient().CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -80,29 +88,28 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestRedirectHandler(t *testing.T) {
-	srv := httptest.NewServer(newRouter("http://localhost:8080"))
+	repo := repository.NewInMemoryRepository()
+	svc := service.NewURLService(repo, "http://localhost:8080")
+	h := handler.NewURLHandler(svc)
+	srv := httptest.NewServer(handler.NewRouter(h))
 	defer srv.Close()
+
+	repo.Save("EwHXdJfB", "https://practicum.yandex.ru/")
 
 	testCases := []struct {
 		name             string
-		storeID          string
-		storeURL         string
 		requestID        string
 		expectedCode     int
 		expectedLocation string
 	}{
 		{
 			name:             "positive test #1",
-			storeID:          "EwHXdJfB",
-			storeURL:         "https://practicum.yandex.ru/",
 			requestID:        "EwHXdJfB",
 			expectedCode:     http.StatusTemporaryRedirect,
 			expectedLocation: "https://practicum.yandex.ru/",
 		},
 		{
 			name:             "id not found",
-			storeID:          "EwHXdJfB",
-			storeURL:         "https://practicum.yandex.ru/",
 			requestID:        "notfound",
 			expectedCode:     http.StatusBadRequest,
 			expectedLocation: "",
@@ -111,9 +118,6 @@ func TestRedirectHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			urlStore = make(map[string]string)
-			urlStore[tc.storeID] = tc.storeURL
-
 			client := resty.New()
 			client.GetClient().CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
