@@ -133,3 +133,56 @@ func TestRedirectHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIShortenHandler(t *testing.T) {
+	srv := setupTestServer()
+	defer srv.Close()
+
+	testCases := []struct {
+		name         string
+		body         string
+		expectedCode int
+		contentType  string
+		bodyCheck    func(t *testing.T, body string)
+	}{
+		{
+			name:         "positive test #1",
+			body:         `{"url":"https://practicum.yandex.ru/"}`,
+			expectedCode: http.StatusCreated,
+			contentType:  "application/json",
+			bodyCheck: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"result":"http://localhost:8080/`)
+			},
+		},
+		{
+			name:         "empty body",
+			body:         "",
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:         "missing url field",
+			body:         `{}`,
+			expectedCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := resty.New()
+			resp, err := client.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(tc.body).
+				Post(srv.URL + "/api/shorten")
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedCode, resp.StatusCode())
+
+			if tc.contentType != "" {
+				assert.Contains(t, resp.Header().Get("Content-Type"), tc.contentType)
+			}
+			if tc.bodyCheck != nil {
+				tc.bodyCheck(t, string(resp.Body()))
+			}
+		})
+	}
+}
