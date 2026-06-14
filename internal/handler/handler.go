@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Sara-dev-arch/urlshortener/internal/logger"
+	"github.com/Sara-dev-arch/urlshortener/internal/middleware"
 	"github.com/Sara-dev-arch/urlshortener/internal/model"
 	"github.com/Sara-dev-arch/urlshortener/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -63,6 +64,7 @@ func (h *URLHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 func NewRouter(h *URLHandler) chi.Router {
 	r := chi.NewRouter()
+	r.Use(middleware.Gzip)
 	r.Use(logger.RequestLogger)
 	r.Post("/", h.Shorten)
 	r.Post("/api/shorten", h.APIShorten)
