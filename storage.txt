@@ -1,2 +1,12 @@
-cc9b0960 http://uhhro.biz/hoqe4v16
-f017d48b http://xyen7yah.biz/j3dqgpu05f36nq/a0sk8hfr
+[
+  {
+    "uuid": "1",
+    "short_url": "527fe508",
+    "original_url": "https://yandex.ru"
+  },
+  {
+    "uuid": "2",
+    "short_url": "57ef24e9",
+    "original_url": "https://practicum.yandex.ru"
+  }
+]

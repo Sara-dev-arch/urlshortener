@@ -62,12 +62,25 @@ func (h *URLHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+func (h *URLHandler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
+	urls := h.svc.GetAllURLs()
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(urls)
+}
+
 func NewRouter(h *URLHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Gzip)
 	r.Use(logger.RequestLogger)
 	r.Post("/", h.Shorten)
 	r.Post("/api/shorten", h.APIShorten)
+	r.Get("/api/user/urls", h.GetUserURLs)
 	r.Get("/{id}", h.Redirect)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
