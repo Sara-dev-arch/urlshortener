@@ -1,6 +1,10 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"net/url"
+
 	"github.com/Sara-dev-arch/urlshortener/internal/model"
 	"github.com/Sara-dev-arch/urlshortener/internal/repository"
 )
@@ -17,10 +21,19 @@ func NewURLService(repo repository.URLRepository, baseURL string) *URLService {
 	}
 }
 
-func (s *URLService) Shorten(originalURL string) string {
-	id := s.repo.GenerateID()
-	s.repo.Save(id, originalURL)
-	return s.baseURL + "/" + id
+func (s *URLService) Shorten(originalURL string) (string, error) {
+	id := generateID()
+	if err := s.repo.Save(id, originalURL); err != nil {
+		return "", err
+	}
+	result, _ := url.JoinPath(s.baseURL, id)
+	return result, nil
+}
+
+func generateID() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 func (s *URLService) Expand(id string) (string, bool) {
@@ -31,8 +44,9 @@ func (s *URLService) GetAllURLs() []model.UserURL {
 	records := s.repo.GetAll()
 	result := make([]model.UserURL, len(records))
 	for i, r := range records {
+		shortURL, _ := url.JoinPath(s.baseURL, r.ShortURL)
 		result[i] = model.UserURL{
-			ShortURL:    s.baseURL + "/" + r.ShortURL,
+			ShortURL:    shortURL,
 			OriginalURL: r.OriginalURL,
 		}
 	}

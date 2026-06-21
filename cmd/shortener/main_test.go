@@ -7,17 +7,19 @@ import (
 	"testing"
 
 	"github.com/Sara-dev-arch/urlshortener/internal/handler"
+	"github.com/Sara-dev-arch/urlshortener/internal/logger"
 	"github.com/Sara-dev-arch/urlshortener/internal/repository"
 	"github.com/Sara-dev-arch/urlshortener/internal/service"
 	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func setupTestServer() *httptest.Server {
 	repo := repository.NewInMemoryRepository()
 	svc := service.NewURLService(repo, "http://localhost:8080")
 	h := handler.NewURLHandler(svc)
-	return httptest.NewServer(handler.NewRouter(h))
+	return httptest.NewServer(handler.NewRouter(h, logger.RequestLogger(zap.NewNop())))
 }
 
 func TestShortenHandler(t *testing.T) {
@@ -91,10 +93,11 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewInMemoryRepository()
 	svc := service.NewURLService(repo, "http://localhost:8080")
 	h := handler.NewURLHandler(svc)
-	srv := httptest.NewServer(handler.NewRouter(h))
+	srv := httptest.NewServer(handler.NewRouter(h, logger.RequestLogger(zap.NewNop())))
 	defer srv.Close()
 
-	repo.Save("EwHXdJfB", "https://practicum.yandex.ru/")
+	err := repo.Save("EwHXdJfB", "https://practicum.yandex.ru/")
+	assert.NoError(t, err)
 
 	testCases := []struct {
 		name             string

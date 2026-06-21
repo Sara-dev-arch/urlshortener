@@ -59,7 +59,7 @@ func Gzip(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
-				http.Error(w, "", http.StatusBadRequest)
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
 			}
 			defer gz.Close()

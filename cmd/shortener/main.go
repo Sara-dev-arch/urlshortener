@@ -13,7 +13,8 @@ import (
 )
 
 func run() error {
-	if err := logger.Initialize("info"); err != nil {
+	log, err := logger.Initialize("info")
+	if err != nil {
 		return err
 	}
 
@@ -21,7 +22,6 @@ func run() error {
 
 	var repo repository.URLRepository
 	if cfg.FileStoragePath != "" {
-		var err error
 		repo, err = repository.NewPersistentRepository(cfg.FileStoragePath)
 		if err != nil {
 			return err
@@ -32,9 +32,9 @@ func run() error {
 
 	svc := service.NewURLService(repo, cfg.BaseURL)
 	h := handler.NewURLHandler(svc)
-	r := handler.NewRouter(h)
+	r := handler.NewRouter(h, logger.RequestLogger(log.With(zap.String("component", "http"))))
 
-	logger.Log.Info("Running server", zap.String("address", cfg.ServerAddress))
+	log.Info("Running server", zap.String("address", cfg.ServerAddress))
 	return http.ListenAndServe(cfg.ServerAddress, r)
 }
 

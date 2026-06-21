@@ -18,13 +18,13 @@ func Parse() *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", "", "file storage path")
 	flag.Parse()
 
-	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
+	if envServerAddress, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
 		cfg.ServerAddress = envServerAddress
 	}
-	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+	if envBaseURL, ok := os.LookupEnv("BASE_URL"); ok {
 		cfg.BaseURL = envBaseURL
 	}
-	if envFileStoragePath := os.Getenv("FILE_STORAGE_PATH"); envFileStoragePath != "" {
+	if envFileStoragePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		cfg.FileStoragePath = envFileStoragePath
 	}
 
