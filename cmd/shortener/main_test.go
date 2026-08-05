@@ -7,17 +7,19 @@ import (
 	"testing"
 
 	"github.com/Sara-dev-arch/urlshortener/internal/handler"
+	"github.com/Sara-dev-arch/urlshortener/internal/logger"
 	"github.com/Sara-dev-arch/urlshortener/internal/repository"
 	"github.com/Sara-dev-arch/urlshortener/internal/service"
 	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func setupTestServer() *httptest.Server {
 	repo := repository.NewInMemoryRepository()
 	svc := service.NewURLService(repo, "http://localhost:8080")
 	h := handler.NewURLHandler(svc)
-	return httptest.NewServer(handler.NewRouter(h))
+	return httptest.NewServer(handler.NewRouter(h, logger.RequestLogger(zap.NewNop())))
 }
 
 func TestShortenHandler(t *testing.T) {
@@ -91,10 +93,11 @@ func TestRedirectHandler(t *testing.T) {
 	repo := repository.NewInMemoryRepository()
 	svc := service.NewURLService(repo, "http://localhost:8080")
 	h := handler.NewURLHandler(svc)
-	srv := httptest.NewServer(handler.NewRouter(h))
+	srv := httptest.NewServer(handler.NewRouter(h, logger.RequestLogger(zap.NewNop())))
 	defer srv.Close()
 
-	repo.Save("EwHXdJfB", "https://practicum.yandex.ru/")
+	err := repo.Save("EwHXdJfB", "https://practicum.yandex.ru/")
+	assert.NoError(t, err)
 
 	testCases := []struct {
 		name             string
@@ -130,6 +133,59 @@ func TestRedirectHandler(t *testing.T) {
 			assert.NoError(t, err, "error making HTTP request")
 			assert.Equal(t, tc.expectedCode, resp.StatusCode(), "Response code didn't match expected")
 			assert.Equal(t, tc.expectedLocation, resp.Header().Get("Location"), "Location header didn't match expected")
+		})
+	}
+}
+
+func TestAPIShortenHandler(t *testing.T) {
+	srv := setupTestServer()
+	defer srv.Close()
+
+	testCases := []struct {
+		name         string
+		body         string
+		expectedCode int
+		contentType  string
+		bodyCheck    func(t *testing.T, body string)
+	}{
+		{
+			name:         "positive test #1",
+			body:         `{"url":"https://practicum.yandex.ru/"}`,
+			expectedCode: http.StatusCreated,
+			contentType:  "application/json",
+			bodyCheck: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"result":"http://localhost:8080/`)
+			},
+		},
+		{
+			name:         "empty body",
+			body:         "",
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:         "missing url field",
+			body:         `{}`,
+			expectedCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := resty.New()
+			resp, err := client.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(tc.body).
+				Post(srv.URL + "/api/shorten")
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedCode, resp.StatusCode())
+
+			if tc.contentType != "" {
+				assert.Contains(t, resp.Header().Get("Content-Type"), tc.contentType)
+			}
+			if tc.bodyCheck != nil {
+				tc.bodyCheck(t, string(resp.Body()))
+			}
 		})
 	}
 }
